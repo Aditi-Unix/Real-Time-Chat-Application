@@ -1,151 +1,304 @@
 import { io } from "socket.io-client";
 
-console.log("Starting client...");
+// ======================================================
+// CONFIG
+// ======================================================
 
-const TOKEN =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2YTdiM2EyNzk1MDRmM2M5NmRlNDYxNDUiLCJpYXQiOjE3ODY0Njg3ODgsImV4cCI6MTc4NzA3MzU4OH0.AyoBDAzFrCLkC6Hh-MT1PGBSx3rnsWx-iTegoRxEn5k";
+const SERVER_URL = "http://localhost:5000";
 
-const CONVERSATION_ID = "6a7b4335e6ed2b955b8c499f";
+const CONVERSATION_ID = "6a7b6166ab0bd805b1d1473a";
 
-const socket = io("http://localhost:5000", {
+// ------------------------------------------------------
+// IMPORTANT:
+// Dono users ke VALID JWT tokens yahan paste karo.
+// User A ka token = login user A
+// User B ka token = login user B
+// ------------------------------------------------------
+
+const TOKEN_A =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2YTdiNWVlYmE3YTQzMDJiOTc1YTBkYzgiLCJpYXQiOjE3ODY0NzAxNTQsImV4cCI6MTc4NzA3NDk1NH0.JAEe8s_Y9Emv1-0YcKHiYMDyjboKJT6Cw99h3ACsKfo";
+
+const TOKEN_B =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2YTdiNWYzMGE3YTQzMDJiOTc1YTBkYzkiLCJpYXQiOjE3ODY0NzA2MjAsImV4cCI6MTc4NzA3NTQyMH0.EgjvFxaJTPD-9HsbXarLhtduI1053A4YxeUX5ZgdllU";
+
+// ======================================================
+// CREATE CLIENT A
+// ======================================================
+
+const clientA = io(SERVER_URL, {
   auth: {
-    token: TOKEN,
+    token: TOKEN_A,
   },
 
-  transports: ["websocket"],
+  transports: ["polling", "websocket"],
 
   reconnection: false,
 });
 
-// ==================================================
-// CONNECT
-// ==================================================
+// ======================================================
+// CREATE CLIENT B
+// ======================================================
 
-socket.on("connect", () => {
-  console.log("Connected!");
-  console.log("Socket ID:", socket.id);
+const clientB = io(SERVER_URL, {
+  auth: {
+    token: TOKEN_B,
+  },
 
-  console.log("Sending joinConversation...");
+  transports: ["polling", "websocket"],
 
-  socket.emit("joinConversation", CONVERSATION_ID, (response) => {
-    console.log("JOIN ACK:", response);
+  reconnection: false,
+});
 
-    if (!response || !response.success) {
-      console.log("JOIN FAILED");
+// ======================================================
+// CLIENT A
+// ======================================================
 
-      return;
-    }
+clientA.on("connect", () => {
+  console.log("\n================================");
 
-    console.log("Joined conversation:", response.conversationId);
+  console.log("CLIENT A CONNECTED");
 
-    // ==========================================
-    // TYPING
-    // ==========================================
+  console.log("Client A Socket ID:", clientA.id);
 
-    setTimeout(() => {
-      socket.emit("typing", CONVERSATION_ID);
+  console.log("================================");
 
-      console.log("Typing started...");
-    }, 1000);
-
-    setTimeout(() => {
-      socket.emit("stopTyping", CONVERSATION_ID);
-
-      console.log("Typing stopped...");
-    }, 2500);
-
-    // ==========================================
-    // SEND MESSAGE
-    // ==========================================
-
-    setTimeout(() => {
-      socket.emit("sendMessage", {
-        conversationId: CONVERSATION_ID,
-
-        text: "Hello! Final backend test message.",
-      });
-
-      console.log("Message sent...");
-    }, 3500);
+  // Join conversation
+  clientA.emit("joinConversation", CONVERSATION_ID, (response) => {
+    console.log("CLIENT A JOIN ACK:", response);
   });
 
-  console.log("Join request sent:", CONVERSATION_ID);
+  console.log("Client A joined conversation:", CONVERSATION_ID);
 });
 
-// ==================================================
-// CONVERSATION JOINED
-// ==================================================
+// ======================================================
+// CLIENT A - CONVERSATION JOINED
+// ======================================================
 
-socket.on("conversationJoined", (data) => {
-  console.log("CONVERSATION JOINED EVENT:", data);
+clientA.on("conversationJoined", (data) => {
+  console.log("CLIENT A CONVERSATION JOINED:", data);
 });
 
-// ==================================================
-// TYPING
-// ==================================================
+// ======================================================
+// CLIENT A - STATUS
+// ======================================================
 
-socket.on("userTyping", (data) => {
-  console.log("User Typing:", data);
+clientA.on("userStatusChanged", (data) => {
+  console.log("CLIENT A USER STATUS:", data);
 });
 
-socket.on("userStoppedTyping", (data) => {
-  console.log("User Stopped Typing:", data);
+// ======================================================
+// CLIENT A - RECEIVE MESSAGE
+// ======================================================
+
+clientA.on("receiveMessage", (message) => {
+  console.log("\n📩 CLIENT A RECEIVED:");
+
+  console.log(message);
+
+  // If message came from B,
+  // mark it delivered and seen.
+
+  clientA.emit("messageDelivered", message._id);
+
+  setTimeout(() => {
+    clientA.emit("messageSeen", message._id);
+  }, 500);
 });
 
-// ==================================================
-// RECEIVE MESSAGE
-// ==================================================
+// ======================================================
+// CLIENT A - MESSAGE STATUS
+// ======================================================
 
-socket.on("receiveMessage", (message) => {
-  console.log("Received Message:", message);
-
-  // Delivered
-  socket.emit("messageDelivered", message._id);
+clientA.on("messageStatusUpdated", (message) => {
+  console.log("CLIENT A MESSAGE STATUS:", message._id, "=>", message.status);
 });
 
-// ==================================================
-// MESSAGE STATUS
-// ==================================================
+// ======================================================
+// CLIENT A - TYPING
+// ======================================================
 
-socket.on("messageStatusUpdated", (message) => {
-  console.log("Message Status:", message._id, "=>", message.status);
-
-  // Seen
-  if (message.status === "delivered") {
-    setTimeout(() => {
-      socket.emit("messageSeen", message._id);
-    }, 1000);
-  }
+clientA.on("userTyping", (data) => {
+  console.log("CLIENT A:", data.userId, "is typing...");
 });
 
-// ==================================================
-// USER STATUS
-// ==================================================
-
-socket.on("userStatusChanged", (data) => {
-  console.log("User Status Changed:", data);
+clientA.on("userStoppedTyping", (data) => {
+  console.log("CLIENT A:", data.userId, "stopped typing");
 });
 
-// ==================================================
-// ERRORS
-// ==================================================
+// ======================================================
+// CLIENT A - ERROR
+// ======================================================
 
-socket.on("conversationError", (error) => {
-  console.log("CONVERSATION ERROR:", error);
+clientA.on("messageError", (error) => {
+  console.log("CLIENT A MESSAGE ERROR:", error);
 });
 
-socket.on("messageError", (error) => {
-  console.log("MESSAGE ERROR:", error);
+clientA.on("conversationError", (error) => {
+  console.log("CLIENT A CONVERSATION ERROR:", error);
 });
 
-socket.on("connect_error", (error) => {
-  console.log("Connection Error:", error.message);
+clientA.on("connect_error", (error) => {
+  console.log("CLIENT A CONNECTION ERROR:", error.message);
 });
 
-// ==================================================
-// DISCONNECT
-// ==================================================
+// ======================================================
+// CLIENT B
+// ======================================================
 
-socket.on("disconnect", (reason) => {
-  console.log("Disconnected:", reason);
+clientB.on("connect", () => {
+  console.log("\n================================");
+
+  console.log("CLIENT B CONNECTED");
+
+  console.log("Client B Socket ID:", clientB.id);
+
+  console.log("================================");
+
+  // Join conversation
+  clientB.emit("joinConversation", CONVERSATION_ID, (response) => {
+    console.log("CLIENT B JOIN ACK:", response);
+  });
+
+  console.log("Client B joined conversation:", CONVERSATION_ID);
 });
+
+// ======================================================
+// CLIENT B - CONVERSATION JOINED
+// ======================================================
+
+clientB.on("conversationJoined", (data) => {
+  console.log("CLIENT B CONVERSATION JOINED:", data);
+});
+
+// ======================================================
+// CLIENT B - STATUS
+// ======================================================
+
+clientB.on("userStatusChanged", (data) => {
+  console.log("CLIENT B USER STATUS:", data);
+});
+
+// ======================================================
+// CLIENT B - RECEIVE MESSAGE
+// ======================================================
+
+clientB.on("receiveMessage", (message) => {
+  console.log("\n📩 CLIENT B RECEIVED:");
+
+  console.log(message);
+
+  // Mark delivered
+  clientB.emit("messageDelivered", message._id);
+
+  // Mark seen
+  setTimeout(() => {
+    clientB.emit("messageSeen", message._id);
+  }, 500);
+});
+
+// ======================================================
+// CLIENT B - MESSAGE STATUS
+// ======================================================
+
+clientB.on("messageStatusUpdated", (message) => {
+  console.log("CLIENT B MESSAGE STATUS:", message._id, "=>", message.status);
+});
+
+// ======================================================
+// CLIENT B - TYPING
+// ======================================================
+
+clientB.on("userTyping", (data) => {
+  console.log("CLIENT B:", data.userId, "is typing...");
+});
+
+clientB.on("userStoppedTyping", (data) => {
+  console.log("CLIENT B:", data.userId, "stopped typing");
+});
+
+// ======================================================
+// CLIENT B - ERROR
+// ======================================================
+
+clientB.on("messageError", (error) => {
+  console.log("CLIENT B MESSAGE ERROR:", error);
+});
+
+clientB.on("conversationError", (error) => {
+  console.log("CLIENT B CONVERSATION ERROR:", error);
+});
+
+clientB.on("connect_error", (error) => {
+  console.log("CLIENT B CONNECTION ERROR:", error.message);
+});
+
+// ======================================================
+// START REAL-TIME TEST
+// ======================================================
+
+// Wait for both clients to connect.
+
+setTimeout(() => {
+  console.log("\n================================");
+
+  console.log("STARTING TWO-USER CHAT TEST");
+
+  console.log("================================");
+
+  // ------------------------------------------------
+  // CLIENT A TYPING
+  // ------------------------------------------------
+
+  clientA.emit("typing", CONVERSATION_ID);
+
+  console.log("\nCLIENT A: Typing started...");
+
+  setTimeout(() => {
+    clientA.emit("stopTyping", CONVERSATION_ID);
+
+    console.log("CLIENT A: Typing stopped...");
+  }, 1500);
+
+  // ------------------------------------------------
+  // CLIENT A → CLIENT B
+  // ------------------------------------------------
+
+  setTimeout(() => {
+    console.log("\n📤 CLIENT A → CLIENT B");
+
+    clientA.emit("sendMessage", {
+      conversationId: CONVERSATION_ID,
+
+      text: "Hello Rahul! Message from Client A.",
+    });
+  }, 2500);
+
+  // ------------------------------------------------
+  // CLIENT B → CLIENT A
+  // ------------------------------------------------
+
+  setTimeout(() => {
+    console.log("\n📤 CLIENT B → CLIENT A");
+
+    clientB.emit("sendMessage", {
+      conversationId: CONVERSATION_ID,
+
+      text: "Hi Aditi! Message from Client B.",
+    });
+  }, 5000);
+
+  // ------------------------------------------------
+  // END TEST
+  // ------------------------------------------------
+
+  setTimeout(() => {
+    console.log("\n================================");
+
+    console.log("TWO-USER TEST FINISHED");
+
+    console.log("================================");
+
+    clientA.disconnect();
+    clientB.disconnect();
+  }, 8000);
+}, 3000);
