@@ -1012,11 +1012,14 @@ mongoose
 // START SERVER
 // ======================================================
 
+const PORT = process.env.PORT || 5000;
+
 server.listen(
-  5000,
+  PORT,
+  "0.0.0.0",
   () => {
     console.log(
-      "Server running on port 5000",
+      `Server running on port ${PORT}`,
     );
   },
 );
