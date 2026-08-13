@@ -37,8 +37,11 @@ function getId(value) {
 // ======================================================
 
 function App() {
+  // Keep each logged-in account isolated to its own browser tab.
+  // Refreshing the same tab keeps the current account,
+  // while another tab can use a different account.
   const [token, setToken] = useState(
-    localStorage.getItem("chatToken"),
+    sessionStorage.getItem("chatToken"),
   );
 
   const [userId, setUserId] = useState(
@@ -884,10 +887,15 @@ function App() {
         );
       }
 
-      localStorage.setItem(
+      // Store auth per browser tab so different users
+      // can stay logged in independently.
+      sessionStorage.setItem(
         "chatToken",
         newToken,
       );
+
+      // Remove any old token saved by the previous version.
+      localStorage.removeItem("chatToken");
 
       const newUserId =
         getUserIdFromToken(
@@ -1028,9 +1036,12 @@ function App() {
 
     socketRef.current?.disconnect();
 
-    localStorage.removeItem(
+    sessionStorage.removeItem(
       "chatToken",
     );
+
+    // Also remove the legacy localStorage token.
+    localStorage.removeItem("chatToken");
 
     pendingMessagesRef.current =
       {};
