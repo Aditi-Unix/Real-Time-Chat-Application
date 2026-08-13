@@ -63,6 +63,10 @@ router.post(
             }
 
 
+            // ==========================================
+            // FIND EXACT 1-TO-1 CONVERSATION
+            // ==========================================
+
             let conversation =
                 await Conversation.findOne({
 
@@ -70,7 +74,8 @@ router.post(
                         $all: [
                             currentUserId,
                             userId
-                        ]
+                        ],
+                        $size: 2
                     }
 
                 });
