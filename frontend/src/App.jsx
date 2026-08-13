@@ -3,10 +3,11 @@ import axios from "axios";
 import { io } from "socket.io-client";
 import EmojiPicker from "emoji-picker-react";
 
-const API_URL = "https://real-time-chat-application-pbb0.onrender.com";
+const API_URL =
+  "https://real-time-chat-app-60f4.onrender.com";
 
-const SOCKET_URL = "https://real-time-chat-application-pbb0.onrender.com";
-
+const SOCKET_URL =
+  "https://real-time-chat-app-60f4.onrender.com";
 function getUserIdFromToken(token) {
   try {
     const payload = JSON.parse(atob(token.split(".")[1]));
