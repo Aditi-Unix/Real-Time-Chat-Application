@@ -4,10 +4,10 @@ import { io } from "socket.io-client";
 import EmojiPicker from "emoji-picker-react";
 
 const API_URL =
-  "https://real-time-chat-application-1-6s71.onrender.com";
+  "https://real-time-chat-app-60f4.onrender.com";
 
 const SOCKET_URL =
-  "https://real-time-chat-application-1-6s71.onrender.com";
+  "https://real-time-chat-app-60f4.onrender.com";
 
 function getUserIdFromToken(token) {
   try {
