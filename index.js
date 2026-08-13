@@ -29,7 +29,9 @@ app.use(
     origin: [
       "http://localhost:5173",
       "http://localhost:5175",
+      "https://real-time-chat-application-1-6s71.onrender.com",
     ],
+    credentials: true,
   }),
 );
 
@@ -41,10 +43,7 @@ app.use(express.json());
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
-app.use(
-  "/api/conversations",
-  conversationRoutes,
-);
+app.use("/api/conversations", conversationRoutes);
 
 // ======================================================
 // HOME
@@ -58,25 +57,21 @@ app.get("/", (req, res) => {
 // PROTECTED USER ROUTE
 // ======================================================
 
-app.get(
-  "/api/auth/me",
-  authMiddleware,
-  async (req, res) => {
-    try {
-      res.status(200).json({
-        message: "Authenticated user",
-        user: req.user,
-      });
-    } catch (error) {
-      console.log("ME ERROR:", error);
+app.get("/api/auth/me", authMiddleware, async (req, res) => {
+  try {
+    res.status(200).json({
+      message: "Authenticated user",
+      user: req.user,
+    });
+  } catch (error) {
+    console.log("ME ERROR:", error);
 
-      res.status(500).json({
-        message: "Error fetching user",
-        error: error.message,
-      });
-    }
-  },
-);
+    res.status(500).json({
+      message: "Error fetching user",
+      error: error.message,
+    });
+  }
+});
 
 // ======================================================
 // HTTP SERVER
@@ -93,7 +88,9 @@ const io = new Server(server, {
     origin: [
       "http://localhost:5173",
       "http://localhost:5175",
+      "https://real-time-chat-application-1-6s71.onrender.com",
     ],
+    credentials: true,
     methods: ["GET", "POST"],
   },
 });
@@ -110,45 +107,25 @@ const userSocketCounts = new Map();
 
 io.use((socket, next) => {
   try {
-    console.log(
-      "Checking socket authentication...",
-    );
+    console.log("Checking socket authentication...");
 
-    const token =
-      socket.handshake.auth?.token;
+    const token = socket.handshake.auth?.token;
 
     if (!token) {
-      return next(
-        new Error(
-          "Authentication token required",
-        ),
-      );
+      return next(new Error("Authentication token required"));
     }
 
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET,
-    );
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     socket.userId = decoded.userId;
 
-    console.log(
-      "Socket authenticated user:",
-      socket.userId,
-    );
+    console.log("Socket authenticated user:", socket.userId);
 
     next();
   } catch (error) {
-    console.log(
-      "SOCKET AUTH ERROR:",
-      error.message,
-    );
+    console.log("SOCKET AUTH ERROR:", error.message);
 
-    next(
-      new Error(
-        "Invalid or expired token",
-      ),
-    );
+    next(new Error("Invalid or expired token"));
   }
 });
 
@@ -157,12 +134,9 @@ io.use((socket, next) => {
 // ======================================================
 
 io.on("connection", (socket) => {
-  console.log(
-    "======================================",
-  );
+  console.log("======================================");
 
-  const userIdString =
-    socket.userId.toString();
+  const userIdString = socket.userId.toString();
 
   // ==================================================
   // PERSONAL USER ROOM
@@ -170,47 +144,27 @@ io.on("connection", (socket) => {
 
   socket.join(userIdString);
 
-  console.log(
-    "USER CONNECTED:",
-    socket.id,
-  );
+  console.log("USER CONNECTED:", socket.id);
 
-  console.log(
-    "AUTHENTICATED USER:",
-    socket.userId,
-  );
+  console.log("AUTHENTICATED USER:", socket.userId);
 
-  console.log(
-    "======================================",
-  );
+  console.log("======================================");
 
   // ==================================================
   // MULTIPLE TAB COUNT
   // ==================================================
 
-  const currentSocketCount =
-    userSocketCounts.get(
-      userIdString,
-    ) || 0;
+  const currentSocketCount = userSocketCounts.get(userIdString) || 0;
 
-  userSocketCounts.set(
-    userIdString,
-    currentSocketCount + 1,
-  );
+  userSocketCounts.set(userIdString, currentSocketCount + 1);
 
   // ==================================================
   // DEBUG
   // ==================================================
 
-  socket.onAny(
-    (event, ...args) => {
-      console.log(
-        "SOCKET EVENT:",
-        event,
-        args,
-      );
-    },
-  );
+  socket.onAny((event, ...args) => {
+    console.log("SOCKET EVENT:", event, args);
+  });
 
   // ==================================================
   // USER ONLINE
@@ -228,764 +182,490 @@ io.on("connection", (socket) => {
     .then((user) => {
       if (!user) return;
 
-      io.emit(
-        "userStatusChanged",
-        {
-          userId:
-            user._id.toString(),
+      io.emit("userStatusChanged", {
+        userId: user._id.toString(),
 
-          isOnline: true,
+        isOnline: true,
 
-          lastSeen:
-            user.lastSeen,
-        },
-      );
+        lastSeen: user.lastSeen,
+      });
     })
     .catch((error) => {
-      console.log(
-        "ONLINE STATUS ERROR:",
-        error,
-      );
+      console.log("ONLINE STATUS ERROR:", error);
     });
 
   // ==================================================
   // JOIN CONVERSATION
   // ==================================================
 
-  socket.on(
-    "joinConversation",
-    async (
-      conversationId,
-      callback,
-    ) => {
-      try {
-        console.log(
-          "JOIN REQUEST:",
-          conversationId,
-        );
+  socket.on("joinConversation", async (conversationId, callback) => {
+    try {
+      console.log("JOIN REQUEST:", conversationId);
 
-        if (!conversationId) {
-          const result = {
-            success: false,
-            message:
-              "Conversation ID required",
-          };
-
-          socket.emit(
-            "conversationError",
-            result,
-          );
-
-          callback?.(result);
-
-          return;
-        }
-
-        const conversation =
-          await Conversation.findById(
-            conversationId,
-          );
-
-        if (!conversation) {
-          const result = {
-            success: false,
-            message:
-              "Conversation not found",
-          };
-
-          socket.emit(
-            "conversationError",
-            result,
-          );
-
-          callback?.(result);
-
-          return;
-        }
-
-        // ==================================================
-        // PARTICIPANT CHECK
-        // ==================================================
-
-        const isParticipant =
-          conversation.participants.some(
-            (participantId) =>
-              participantId.toString() ===
-              socket.userId.toString(),
-          );
-
-        if (!isParticipant) {
-          const result = {
-            success: false,
-            message:
-              "You are not a participant of this conversation",
-          };
-
-          socket.emit(
-            "conversationError",
-            result,
-          );
-
-          callback?.(result);
-
-          return;
-        }
-
-        // ==================================================
-        // JOIN ROOM
-        // ==================================================
-
-        const roomId =
-          conversationId.toString();
-
-        await socket.join(roomId);
-
-        console.log(
-          "ROOM JOINED:",
-          roomId,
-        );
-
-        console.log(
-          "ROOM MEMBERS:",
-          Array.from(
-            io.sockets.adapter.rooms.get(
-              roomId,
-            ) || [],
-          ),
-        );
-
-        const result = {
-          success: true,
-          message:
-            "Conversation joined successfully",
-          conversationId: roomId,
-        };
-
-        socket.emit(
-          "conversationJoined",
-          {
-            conversationId:
-              roomId,
-          },
-        );
-
-        callback?.(result);
-      } catch (error) {
-        console.log(
-          "JOIN CONVERSATION ERROR:",
-          error,
-        );
-
+      if (!conversationId) {
         const result = {
           success: false,
-          message:
-            error.message,
+          message: "Conversation ID required",
         };
 
-        socket.emit(
-          "conversationError",
-          result,
-        );
+        socket.emit("conversationError", result);
 
         callback?.(result);
+
+        return;
       }
-    },
-  );
+
+      const conversation = await Conversation.findById(conversationId);
+
+      if (!conversation) {
+        const result = {
+          success: false,
+          message: "Conversation not found",
+        };
+
+        socket.emit("conversationError", result);
+
+        callback?.(result);
+
+        return;
+      }
+
+      // ==================================================
+      // PARTICIPANT CHECK
+      // ==================================================
+
+      const isParticipant = conversation.participants.some(
+        (participantId) =>
+          participantId.toString() === socket.userId.toString(),
+      );
+
+      if (!isParticipant) {
+        const result = {
+          success: false,
+          message: "You are not a participant of this conversation",
+        };
+
+        socket.emit("conversationError", result);
+
+        callback?.(result);
+
+        return;
+      }
+
+      // ==================================================
+      // JOIN ROOM
+      // ==================================================
+
+      const roomId = conversationId.toString();
+
+      await socket.join(roomId);
+
+      console.log("ROOM JOINED:", roomId);
+
+      console.log(
+        "ROOM MEMBERS:",
+        Array.from(io.sockets.adapter.rooms.get(roomId) || []),
+      );
+
+      const result = {
+        success: true,
+        message: "Conversation joined successfully",
+        conversationId: roomId,
+      };
+
+      socket.emit("conversationJoined", {
+        conversationId: roomId,
+      });
+
+      callback?.(result);
+    } catch (error) {
+      console.log("JOIN CONVERSATION ERROR:", error);
+
+      const result = {
+        success: false,
+        message: error.message,
+      };
+
+      socket.emit("conversationError", result);
+
+      callback?.(result);
+    }
+  });
 
   // ==================================================
   // TYPING START
   // ==================================================
 
-  socket.on(
-    "typing",
-    async (conversationId) => {
-      try {
-        console.log(
-          "⌨️ TYPING:",
-          socket.userId.toString(),
-          conversationId,
-        );
+  socket.on("typing", async (conversationId) => {
+    try {
+      console.log("⌨️ TYPING:", socket.userId.toString(), conversationId);
 
-        if (!conversationId) {
-          return;
-        }
-
-        const conversation =
-          await Conversation.findById(
-            conversationId,
-          );
-
-        if (!conversation) {
-          return;
-        }
-
-        const isParticipant =
-          conversation.participants.some(
-            (participantId) =>
-              participantId.toString() ===
-              socket.userId.toString(),
-          );
-
-        if (!isParticipant) {
-          return;
-        }
-
-        const roomId =
-          conversationId.toString();
-
-        // Send typing to other participant
-        for (const participantId of
-          conversation.participants) {
-
-          const participantIdString =
-            participantId.toString();
-
-          if (
-            participantIdString ===
-            socket.userId.toString()
-          ) {
-            continue;
-          }
-
-          io.to(participantIdString).emit(
-            "userTyping",
-            {
-              userId:
-                socket.userId.toString(),
-
-              conversationId:
-                roomId,
-            },
-          );
-        }
-
-        console.log(
-          "✅ TYPING SENT TO ROOM:",
-          roomId,
-        );
-      } catch (error) {
-        console.log(
-          "TYPING ERROR:",
-          error,
-        );
+      if (!conversationId) {
+        return;
       }
-    },
-  );
+
+      const conversation = await Conversation.findById(conversationId);
+
+      if (!conversation) {
+        return;
+      }
+
+      const isParticipant = conversation.participants.some(
+        (participantId) =>
+          participantId.toString() === socket.userId.toString(),
+      );
+
+      if (!isParticipant) {
+        return;
+      }
+
+      const roomId = conversationId.toString();
+
+      // Send typing to other participant
+      for (const participantId of conversation.participants) {
+        const participantIdString = participantId.toString();
+
+        if (participantIdString === socket.userId.toString()) {
+          continue;
+        }
+
+        io.to(participantIdString).emit("userTyping", {
+          userId: socket.userId.toString(),
+
+          conversationId: roomId,
+        });
+      }
+
+      console.log("✅ TYPING SENT TO ROOM:", roomId);
+    } catch (error) {
+      console.log("TYPING ERROR:", error);
+    }
+  });
 
   // ==================================================
   // TYPING STOP
   // ==================================================
 
-  socket.on(
-    "stopTyping",
-    async (conversationId) => {
-      try {
-        console.log(
-          "🛑 STOP TYPING:",
-          socket.userId.toString(),
-          conversationId,
-        );
+  socket.on("stopTyping", async (conversationId) => {
+    try {
+      console.log("🛑 STOP TYPING:", socket.userId.toString(), conversationId);
 
-        if (!conversationId) {
-          return;
-        }
-
-        const conversation =
-          await Conversation.findById(
-            conversationId,
-          );
-
-        if (!conversation) {
-          return;
-        }
-
-        const isParticipant =
-          conversation.participants.some(
-            (participantId) =>
-              participantId.toString() ===
-              socket.userId.toString(),
-          );
-
-        if (!isParticipant) {
-          return;
-        }
-
-        const roomId =
-          conversationId.toString();
-
-        // Send stop typing to other participant
-        for (const participantId of
-          conversation.participants) {
-
-          const participantIdString =
-            participantId.toString();
-
-          if (
-            participantIdString ===
-            socket.userId.toString()
-          ) {
-            continue;
-          }
-
-          io.to(participantIdString).emit(
-            "userStoppedTyping",
-            {
-              userId:
-                socket.userId.toString(),
-
-              conversationId:
-                roomId,
-            },
-          );
-        }
-      } catch (error) {
-        console.log(
-          "STOP TYPING ERROR:",
-          error,
-        );
+      if (!conversationId) {
+        return;
       }
-    },
-  );
+
+      const conversation = await Conversation.findById(conversationId);
+
+      if (!conversation) {
+        return;
+      }
+
+      const isParticipant = conversation.participants.some(
+        (participantId) =>
+          participantId.toString() === socket.userId.toString(),
+      );
+
+      if (!isParticipant) {
+        return;
+      }
+
+      const roomId = conversationId.toString();
+
+      // Send stop typing to other participant
+      for (const participantId of conversation.participants) {
+        const participantIdString = participantId.toString();
+
+        if (participantIdString === socket.userId.toString()) {
+          continue;
+        }
+
+        io.to(participantIdString).emit("userStoppedTyping", {
+          userId: socket.userId.toString(),
+
+          conversationId: roomId,
+        });
+      }
+    } catch (error) {
+      console.log("STOP TYPING ERROR:", error);
+    }
+  });
 
   // ==================================================
   // SEND MESSAGE
   // ==================================================
 
-  socket.on(
-    "sendMessage",
-    async (data) => {
-      try {
-        console.log(
-          "MESSAGE RECEIVED:",
-          data,
-        );
+  socket.on("sendMessage", async (data) => {
+    try {
+      console.log("MESSAGE RECEIVED:", data);
 
-        const conversationId =
-          data?.conversationId;
+      const conversationId = data?.conversationId;
 
-        const text =
-          data?.text;
+      const text = data?.text;
 
-        if (
-          !conversationId ||
-          !text ||
-          !text.trim()
-        ) {
-          socket.emit(
-            "messageError",
-            {
-              message:
-                "conversationId and text are required",
-            },
-          );
+      if (!conversationId || !text || !text.trim()) {
+        socket.emit("messageError", {
+          message: "conversationId and text are required",
+        });
 
-          return;
-        }
-
-        // ==================================================
-        // FIND CONVERSATION
-        // ==================================================
-
-        const conversation =
-          await Conversation.findById(
-            conversationId,
-          );
-
-        if (!conversation) {
-          socket.emit(
-            "messageError",
-            {
-              message:
-                "Conversation not found",
-            },
-          );
-
-          return;
-        }
-
-        // ==================================================
-        // PARTICIPANT CHECK
-        // ==================================================
-
-        const isParticipant =
-          conversation.participants.some(
-            (participantId) =>
-              participantId.toString() ===
-              socket.userId.toString(),
-          );
-
-        if (!isParticipant) {
-          socket.emit(
-            "messageError",
-            {
-              message:
-                "You are not a participant of this conversation",
-            },
-          );
-
-          return;
-        }
-
-        // ==================================================
-        // CREATE MESSAGE
-        // ==================================================
-
-        const newMessage =
-          await Message.create({
-            conversation:
-              conversationId,
-
-            sender:
-              socket.userId,
-
-            text:
-              text.trim(),
-
-            status: "sent",
-          });
-
-        // ==================================================
-        // UPDATE CONVERSATION
-        // ==================================================
-
-        await Conversation.findByIdAndUpdate(
-          conversationId,
-          {
-            lastMessage:
-              newMessage._id,
-          },
-        );
-
-        // ==================================================
-        // POPULATE MESSAGE
-        // ==================================================
-
-        const populatedMessage =
-          await Message.findById(
-            newMessage._id,
-          )
-            .populate(
-              "sender",
-              "name email profileImage",
-            )
-            .populate(
-              "conversation",
-            );
-
-        if (!populatedMessage) {
-          socket.emit(
-            "messageError",
-            {
-              message:
-                "Message could not be loaded",
-            },
-          );
-
-          return;
-        }
-
-        // ==================================================
-        // SEND ONLY TO CONVERSATION PARTICIPANTS
-        // ==================================================
-
-        for (const participantId of
-          conversation.participants) {
-
-          const participantSockets =
-            await io
-              .in(
-                participantId.toString(),
-              )
-              .fetchSockets();
-
-          participantSockets.forEach(
-            (participantSocket) => {
-              participantSocket.emit(
-                "receiveMessage",
-                populatedMessage,
-              );
-            },
-          );
-        }
-
-        // ==================================================
-        // RECIPIENT ONLINE CHECK
-        // ==================================================
-
-        let recipientIsOnline =
-          false;
-
-        for (const participantId of
-          conversation.participants) {
-
-          const participantIdString =
-            participantId.toString();
-
-          if (
-            participantIdString ===
-            socket.userId.toString()
-          ) {
-            continue;
-          }
-
-          const recipientSockets =
-            await io
-              .in(
-                participantIdString,
-              )
-              .fetchSockets();
-
-          if (
-            recipientSockets.length > 0
-          ) {
-            recipientIsOnline =
-              true;
-          }
-        }
-
-        // ==================================================
-        // AUTOMATIC DELIVERED
-        // ==================================================
-
-        if (recipientIsOnline) {
-          const deliveredMessage =
-            await Message.findByIdAndUpdate(
-              newMessage._id,
-              {
-                status:
-                  "delivered",
-              },
-              {
-                new: true,
-              },
-            );
-
-          // Sender ke all tabs ko status
-          const senderSockets =
-            await io
-              .in(
-                socket.userId.toString(),
-              )
-              .fetchSockets();
-
-          senderSockets.forEach(
-            (senderSocket) => {
-              senderSocket.emit(
-                "messageStatusUpdated",
-                deliveredMessage,
-              );
-            },
-          );
-        }
-
-        console.log(
-          "MESSAGE SENT:",
-          newMessage._id.toString(),
-        );
-      } catch (error) {
-        console.log(
-          "MESSAGE ERROR:",
-          error,
-        );
-
-        socket.emit(
-          "messageError",
-          {
-            message:
-              error.message,
-          },
-        );
+        return;
       }
-    },
-  );
+
+      // ==================================================
+      // FIND CONVERSATION
+      // ==================================================
+
+      const conversation = await Conversation.findById(conversationId);
+
+      if (!conversation) {
+        socket.emit("messageError", {
+          message: "Conversation not found",
+        });
+
+        return;
+      }
+
+      // ==================================================
+      // PARTICIPANT CHECK
+      // ==================================================
+
+      const isParticipant = conversation.participants.some(
+        (participantId) =>
+          participantId.toString() === socket.userId.toString(),
+      );
+
+      if (!isParticipant) {
+        socket.emit("messageError", {
+          message: "You are not a participant of this conversation",
+        });
+
+        return;
+      }
+
+      // ==================================================
+      // CREATE MESSAGE
+      // ==================================================
+
+      const newMessage = await Message.create({
+        conversation: conversationId,
+
+        sender: socket.userId,
+
+        text: text.trim(),
+
+        status: "sent",
+      });
+
+      // ==================================================
+      // UPDATE CONVERSATION
+      // ==================================================
+
+      await Conversation.findByIdAndUpdate(conversationId, {
+        lastMessage: newMessage._id,
+      });
+
+      // ==================================================
+      // POPULATE MESSAGE
+      // ==================================================
+
+      const populatedMessage = await Message.findById(newMessage._id)
+        .populate("sender", "name email profileImage")
+        .populate("conversation");
+
+      if (!populatedMessage) {
+        socket.emit("messageError", {
+          message: "Message could not be loaded",
+        });
+
+        return;
+      }
+
+      // ==================================================
+      // SEND ONLY TO CONVERSATION PARTICIPANTS
+      // ==================================================
+
+      for (const participantId of conversation.participants) {
+        const participantSockets = await io
+          .in(participantId.toString())
+          .fetchSockets();
+
+        participantSockets.forEach((participantSocket) => {
+          participantSocket.emit("receiveMessage", populatedMessage);
+        });
+      }
+
+      // ==================================================
+      // RECIPIENT ONLINE CHECK
+      // ==================================================
+
+      let recipientIsOnline = false;
+
+      for (const participantId of conversation.participants) {
+        const participantIdString = participantId.toString();
+
+        if (participantIdString === socket.userId.toString()) {
+          continue;
+        }
+
+        const recipientSockets = await io
+          .in(participantIdString)
+          .fetchSockets();
+
+        if (recipientSockets.length > 0) {
+          recipientIsOnline = true;
+        }
+      }
+
+      // ==================================================
+      // AUTOMATIC DELIVERED
+      // ==================================================
+
+      if (recipientIsOnline) {
+        const deliveredMessage = await Message.findByIdAndUpdate(
+          newMessage._id,
+          {
+            status: "delivered",
+          },
+          {
+            new: true,
+          },
+        );
+
+        // Sender ke all tabs ko status
+        const senderSockets = await io
+          .in(socket.userId.toString())
+          .fetchSockets();
+
+        senderSockets.forEach((senderSocket) => {
+          senderSocket.emit("messageStatusUpdated", deliveredMessage);
+        });
+      }
+
+      console.log("MESSAGE SENT:", newMessage._id.toString());
+    } catch (error) {
+      console.log("MESSAGE ERROR:", error);
+
+      socket.emit("messageError", {
+        message: error.message,
+      });
+    }
+  });
 
   // ==================================================
   // MESSAGE DELIVERED
   // ==================================================
 
-  socket.on(
-    "messageDelivered",
-    async (messageId) => {
-      try {
-        const message =
-          await Message.findByIdAndUpdate(
-            messageId,
-            {
-              status:
-                "delivered",
-            },
-            {
-              new: true,
-            },
-          );
+  socket.on("messageDelivered", async (messageId) => {
+    try {
+      const message = await Message.findByIdAndUpdate(
+        messageId,
+        {
+          status: "delivered",
+        },
+        {
+          new: true,
+        },
+      );
 
-        if (!message) return;
+      if (!message) return;
 
-        const conversation =
-          await Conversation.findById(
-            message.conversation,
-          );
+      const conversation = await Conversation.findById(message.conversation);
 
-        if (!conversation) return;
+      if (!conversation) return;
 
-        for (const participantId of
-          conversation.participants) {
+      for (const participantId of conversation.participants) {
+        const participantSockets = await io
+          .in(participantId.toString())
+          .fetchSockets();
 
-          const participantSockets =
-            await io
-              .in(
-                participantId.toString(),
-              )
-              .fetchSockets();
-
-          participantSockets.forEach(
-            (participantSocket) => {
-              participantSocket.emit(
-                "messageStatusUpdated",
-                message,
-              );
-            },
-          );
-        }
-      } catch (error) {
-        console.log(
-          "DELIVERED ERROR:",
-          error,
-        );
+        participantSockets.forEach((participantSocket) => {
+          participantSocket.emit("messageStatusUpdated", message);
+        });
       }
-    },
-  );
+    } catch (error) {
+      console.log("DELIVERED ERROR:", error);
+    }
+  });
 
   // ==================================================
   // MESSAGE SEEN
   // ==================================================
 
-  socket.on(
-    "messageSeen",
-    async (messageId) => {
-      try {
-        const message =
-          await Message.findByIdAndUpdate(
-            messageId,
-            {
-              status: "seen",
-            },
-            {
-              new: true,
-            },
-          );
+  socket.on("messageSeen", async (messageId) => {
+    try {
+      const message = await Message.findByIdAndUpdate(
+        messageId,
+        {
+          status: "seen",
+        },
+        {
+          new: true,
+        },
+      );
 
-        if (!message) return;
+      if (!message) return;
 
-        const conversation =
-          await Conversation.findById(
-            message.conversation,
-          );
+      const conversation = await Conversation.findById(message.conversation);
 
-        if (!conversation) return;
+      if (!conversation) return;
 
-        for (const participantId of
-          conversation.participants) {
+      for (const participantId of conversation.participants) {
+        const participantSockets = await io
+          .in(participantId.toString())
+          .fetchSockets();
 
-          const participantSockets =
-            await io
-              .in(
-                participantId.toString(),
-              )
-              .fetchSockets();
-
-          participantSockets.forEach(
-            (participantSocket) => {
-              participantSocket.emit(
-                "messageStatusUpdated",
-                message,
-              );
-            },
-          );
-        }
-      } catch (error) {
-        console.log(
-          "SEEN ERROR:",
-          error,
-        );
+        participantSockets.forEach((participantSocket) => {
+          participantSocket.emit("messageStatusUpdated", message);
+        });
       }
-    },
-  );
+    } catch (error) {
+      console.log("SEEN ERROR:", error);
+    }
+  });
 
   // ==================================================
   // DISCONNECT
   // ==================================================
 
-  socket.on(
-    "disconnect",
-    async (reason) => {
-      console.log(
-        "USER DISCONNECTED:",
-        socket.id,
-        reason,
-      );
+  socket.on("disconnect", async (reason) => {
+    console.log("USER DISCONNECTED:", socket.id, reason);
 
-      try {
-        const userIdString =
-          socket.userId.toString();
+    try {
+      const userIdString = socket.userId.toString();
 
-        const currentCount =
-          userSocketCounts.get(
-            userIdString,
-          ) || 0;
+      const currentCount = userSocketCounts.get(userIdString) || 0;
 
-        const newCount =
-          Math.max(
-            currentCount - 1,
-            0,
-          );
+      const newCount = Math.max(currentCount - 1, 0);
 
-        if (newCount === 0) {
-          userSocketCounts.delete(
-            userIdString,
-          );
+      if (newCount === 0) {
+        userSocketCounts.delete(userIdString);
 
-          const user =
-            await User.findByIdAndUpdate(
-              socket.userId,
-              {
-                isOnline: false,
-                lastSeen:
-                  new Date(),
-              },
-              {
-                new: true,
-              },
-            );
-
-          if (user) {
-            io.emit(
-              "userStatusChanged",
-              {
-                userId:
-                  user._id.toString(),
-
-                isOnline: false,
-
-                lastSeen:
-                  user.lastSeen,
-              },
-            );
-          }
-        } else {
-          userSocketCounts.set(
-            userIdString,
-            newCount,
-          );
-        }
-      } catch (error) {
-        console.log(
-          "OFFLINE STATUS ERROR:",
-          error,
+        const user = await User.findByIdAndUpdate(
+          socket.userId,
+          {
+            isOnline: false,
+            lastSeen: new Date(),
+          },
+          {
+            new: true,
+          },
         );
+
+        if (user) {
+          io.emit("userStatusChanged", {
+            userId: user._id.toString(),
+
+            isOnline: false,
+
+            lastSeen: user.lastSeen,
+          });
+        }
+      } else {
+        userSocketCounts.set(userIdString, newCount);
       }
-    },
-  );
+    } catch (error) {
+      console.log("OFFLINE STATUS ERROR:", error);
+    }
+  });
 });
 
 // ======================================================
@@ -993,19 +673,12 @@ io.on("connection", (socket) => {
 // ======================================================
 
 mongoose
-  .connect(
-    process.env.MONGO_URI,
-  )
+  .connect(process.env.MONGO_URI)
   .then(() => {
-    console.log(
-      "MongoDB Connected Successfully",
-    );
+    console.log("MongoDB Connected Successfully");
   })
   .catch((error) => {
-    console.log(
-      "MongoDB Error:",
-      error,
-    );
+    console.log("MongoDB Error:", error);
   });
 
 // ======================================================
@@ -1014,12 +687,6 @@ mongoose
 
 const PORT = process.env.PORT || 5000;
 
-server.listen(
-  PORT,
-  "0.0.0.0",
-  () => {
-    console.log(
-      `Server running on port ${PORT}`,
-    );
-  },
-);
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on port ${PORT}`);
+});
